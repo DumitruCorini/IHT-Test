@@ -4,26 +4,35 @@ function getLoggedIn() {
 
     var url = "http://localhost:9000/login";
 
+    // fetch(url, {
+    //     headers: {
+    //         "Accept": "application/json",
+    //         "Content-type": "application/json"
+    //     },
+    //     method: "POST",
+    //     body: JSON.stringify({username: "platformAdmin", password: "platform"})
+    // }).then(res => {
+    //     console.log("res", res);
+    // });
+
     var xhr = new XMLHttpRequest();
-    xhr.open("POST", url);
+    xhr.open("POST", url, true);
+
+    xhr.onreadystatechange = function () {
+        if (this.readyState == 4) {
+            console.log(xhr);
+        }
+    };
 
     xhr.setRequestHeader("Accept", "application/json");
     xhr.setRequestHeader("Content-Type", "application/json");
 
-    xhr.onreadystatechange = function () {
-        if (xhr.readyState === 4) {
-            console.log(xhr.status);
-            console.log(xhr.responseText);
-        }};
+    var data = `{
+        "username": "${username}",
+        "password": "${password}"
+    }`;
 
-    var data = {
-      "username": username,
-      "password": password
-    };
-
-    var response = xhr.send(data);
-
-    alert(response);
+    xhr.send(data);
 }
 
 function forgetPassword() {
