@@ -1,55 +1,71 @@
 package com.example.demo.service;
 
-import com.example.demo.model.LoginResponse;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.client.RestTemplate;
+import com.example.demo.model.LoginForm;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
-import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
 public class LoginController {
 
-    @CrossOrigin(origins = "http://localhost:8080")
+    HttpClient httpClient = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_2)
+            .build();
+    String sessionIdCookieValue;
+    String bonitaApiTokenCookieValue;
+
+    @CrossOrigin
     @PostMapping("/login")
-    public LoginResponse login(HttpServletRequest request) {
+    public HttpServletResponse login(@RequestBody LoginForm loginForm, HttpServletResponse httpServletResponse) {
 
-        String username = request.getParameter("username");
-        String password = request.getParameter("password");
+        HttpResponse<String> response = logIntoBonita(loginForm.getUsername(), loginForm.getPassword());
 
-        HttpResponse response = logIntoBonita(username, password);
+        if (response.statusCode() == 200) {
+            List<String> cookiesString = response.headers().map().get("set-cookie");
+            String[] sessionIdArray = cookiesString.get(0).split("; ");
+            sessionIdCookieValue = sessionIdArray[0].substring(sessionIdArray[0].indexOf("=") + 1);
+            String sessionIdPath = sessionIdArray[1].substring(sessionIdArray[1].indexOf("=") + 1);
+            Cookie sessionIdCookie = new Cookie("JSESSIONID", sessionIdCookieValue);
+            sessionIdCookie.setPath(sessionIdPath);
+            httpServletResponse.addCookie(sessionIdCookie);
 
-        LoginResponse loginResponse = new LoginResponse();
+            String[] bonitaApiToken = cookiesString.get(1).split("; ");
+            bonitaApiTokenCookieValue = bonitaApiToken[0].substring(bonitaApiToken[0].indexOf("=") + 1);
+            String bonitaApiTokenPath = bonitaApiToken[1].substring(bonitaApiToken[1].indexOf("=") + 1);
+            Cookie bonitaApiTokenCookie = new Cookie("X-Bonita-API-Token", bonitaApiTokenCookieValue);
+            bonitaApiTokenCookie.setPath(bonitaApiTokenPath);
+            httpServletResponse.addCookie(bonitaApiTokenCookie);
 
-        if (response.statusCode() == 204) {
-            loginResponse.setStatus(response.statusCode());
-            loginResponse.setMessage("Login successful");
-
-            return loginResponse;
+            httpServletResponse.setStatus(response.statusCode());
         }
-        loginResponse.setStatus(response.statusCode());
-        loginResponse.setMessage("Login error");
+        httpServletResponse.setStatus(response.statusCode());
+        return null;
+    }
 
-        return loginResponse;
+    @CrossOrigin
+    @GetMapping("/getLicense")
+    public HttpServletResponse getLicense() {
+        HttpResponse<String> response = getLicenseFromBonita();
+
+        System.out.println(response.statusCode());
+
+        return null;
     }
 
     private HttpResponse logIntoBonita(String username, String password) {
-
-        HttpClient httpClient = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_2)
-                .build();
 
         Map<String, String> data = new HashMap<>();
         data.put("username", username);
@@ -57,10 +73,31 @@ public class LoginController {
 
         HttpRequest request = HttpRequest.newBuilder()
                 .POST(buildFormDataFromMap(data))
-                .uri(URI.create("http://localhost:8080/bonita/loginservice?redirect=false"))
+                .uri(URI.create("http://localhost:8080/bonita/platformloginservice"))
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .build();
 
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            return response;
+        } catch (Exception e) {
+            System.err.println(e);
+        }
+
+        return null;
+    }
+
+    private HttpResponse getLicenseFromBonita() {
+
+        String cookies = "JSESSIONID=" + sessionIdCookieValue + "; X-Bonita-API-Token=" + bonitaApiTokenCookieValue;
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .GET()
+                .uri(URI.create("http://localhost:8080/bonita/API/platform/license"))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .setHeader("Cookie", cookies)
+                .build();
 
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
